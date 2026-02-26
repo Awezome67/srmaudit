@@ -38,21 +38,21 @@ model Organization {
   systemType  String
   createdAt   DateTime          @default(now())
   assets      Asset[]
-  assignments AuditAssignment[]
+  auditAssignments AuditAssignment[]
 }
 
 model AuditAssignment {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   auditorId      String
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  auditor      User         @relation(fields: [auditorId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  auditor        User         @relation(fields: [auditorId], references: [id])
 
   @@unique([organizationId, auditorId])
-  @@index([organizationId])
   @@index([auditorId])
+  @@index([organizationId])
 }
 
 model Asset {
