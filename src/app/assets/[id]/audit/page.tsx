@@ -35,11 +35,17 @@ export default async function AuditPage({
   ========================= */
   const compliant = audit.filter((a) => a.status === "COMPLIANT").length;
   const partial = audit.filter((a) => a.status === "PARTIAL").length;
-  const applicable = audit.filter(
-    (a) => a.status !== "NOT_APPLICABLE"
-  ).length;
+  const non = audit.filter((a) => a.status === "NON_COMPLIANT").length;
+  const na = audit.filter((a) => a.status === "NOT_APPLICABLE").length;
 
-  const compliance =
+  const applicable = audit.length - na;
+
+  // Strict (PDF-style): Compliant / Applicable
+  const strictCompliance =
+    applicable === 0 ? 0 : Math.round((compliant / applicable) * 100);
+
+  // Weighted (bonus): Partial counts as 0.5
+  const weightedCompliance =
     applicable === 0
       ? 0
       : Math.round(((compliant + partial * 0.5) / applicable) * 100);
@@ -62,9 +68,43 @@ export default async function AuditPage({
       </div>
 
       {/* Compliance */}
-      <div className="bg-white shadow-md rounded-xl p-6">
-        <h2 className="text-lg font-semibold">Compliance Score</h2>
-        <div className="text-3xl font-bold mt-2">{compliance}%</div>
+      <div className="bg-white shadow-md rounded-xl p-6 space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold">Compliance Score</h2>
+          <p className="text-xs text-gray-500 mt-1">
+            Applicable controls exclude <b>Not Applicable</b>.
+          </p>
+        </div>
+
+        <div className="flex items-end gap-6 flex-wrap">
+          <div>
+            <div className="text-xs text-gray-500">Strict (PDF)</div>
+            <div className="text-3xl font-bold">{strictCompliance}%</div>
+          </div>
+
+          <div>
+            <div className="text-xs text-gray-500">Weighted (Partial = 0.5)</div>
+            <div className="text-xl font-semibold">{weightedCompliance}%</div>
+          </div>
+
+          <div className="text-xs text-gray-600 space-y-1">
+            <div>
+              <b>Compliant:</b> {compliant}
+            </div>
+            <div>
+              <b>Partial:</b> {partial}
+            </div>
+            <div>
+              <b>Non-Compliant:</b> {non}
+            </div>
+            <div>
+              <b>Not Applicable:</b> {na}
+            </div>
+            <div>
+              <b>Applicable Total:</b> {applicable}
+            </div>
+          </div>
+        </div>
       </div>
 
       {audit.length === 0 ? (
@@ -89,9 +129,7 @@ export default async function AuditPage({
               {/* Control Info */}
               <div>
                 <div className="font-medium">{a.control.name}</div>
-                <div className="text-xs text-gray-500">
-                  {a.control.framework}
-                </div>
+                <div className="text-xs text-gray-500">{a.control.framework}</div>
               </div>
 
               {/* Status */}
@@ -106,6 +144,14 @@ export default async function AuditPage({
                 }}
                 className="space-y-2"
               >
+
+<textarea
+  name="justification"
+  defaultValue=""
+  placeholder="Justification (required if Not Applicable)"
+  className="border rounded p-1 text-xs w-full"
+/>
+
                 <select
                   name="status"
                   defaultValue={a.status}
@@ -130,9 +176,7 @@ export default async function AuditPage({
               </form>
 
               {/* Notes display */}
-              <div className="text-xs text-gray-500">
-                Current: {a.status}
-              </div>
+              <div className="text-xs text-gray-500">Current: {a.status}</div>
 
               {/* Evidence Section */}
               <div className="space-y-2">
@@ -158,9 +202,7 @@ export default async function AuditPage({
 
                 {/* Evidence List */}
                 {a.control.evidences.length === 0 ? (
-                  <div className="text-xs text-gray-400">
-                    No evidence uploaded.
-                  </div>
+                  <div className="text-xs text-gray-400">No evidence uploaded.</div>
                 ) : (
                   <div className="space-y-1">
                     {a.control.evidences.map((e) => (

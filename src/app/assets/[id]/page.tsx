@@ -2,6 +2,13 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { toggleVulnerability } from "./actions";
 
+function cellColor(score: number) {
+  if (score <= 5) return "bg-green-100 text-green-800";
+  if (score <= 10) return "bg-yellow-100 text-yellow-800";
+  if (score <= 15) return "bg-orange-100 text-orange-800";
+  return "bg-red-100 text-red-800";
+}
+
 export default async function AssetDetailPage({
   params,
 }: {
@@ -18,7 +25,8 @@ export default async function AssetDetailPage({
     orderBy: { category: "asc" },
   });
 
-  if (!asset) return <div className="text-sm text-gray-500">Asset not found</div>;
+  if (!asset)
+    return <div className="text-sm text-gray-500">Asset not found</div>;
 
   const selected = new Set(asset.selections.map((s) => s.vulnerabilityId));
 
@@ -43,20 +51,35 @@ export default async function AssetDetailPage({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
   <Link
     href={`/assets/${asset.id}/audit`}
-    className="inline-block text-sm bg-black text-white px-3 py-2 rounded"
+    className="inline-block text-sm bg-black text-white px-3 py-2 rounded hover:bg-gray-800 transition"
   >
-    Open Audit Checklist
+    Audit Checklist
   </Link>
 
   <Link
-  href={`/assets/${asset.id}/findings`}
+    href={`/assets/${asset.id}/findings`}
+    className="inline-block text-sm border border-gray-200 px-3 py-2 rounded hover:bg-gray-50 transition"
+  >
+    Findings
+  </Link>
+
+  <Link
+  href={`/assets/${asset.id}/soa`}
   className="inline-block text-sm border border-gray-200 px-3 py-2 rounded hover:bg-gray-50"
 >
-  Open Findings
+  Open SoA
 </Link>
+
+
+  <Link
+    href={`/assets/${asset.id}/report`}
+    className="inline-block text-sm border border-gray-200 px-3 py-2 rounded hover:bg-gray-50 transition"
+  >
+    Report
+  </Link>
 </div>
       </div>
 
@@ -145,6 +168,68 @@ export default async function AssetDetailPage({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* ===== STEP B: RISK MATRIX (5x5) ===== */}
+      <div className="bg-white shadow-md rounded-xl p-6">
+        <h2 className="text-lg font-semibold">Risk Matrix</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          Likelihood × Impact (1–5). Highlighted cells match selected items.
+        </p>
+
+        <div className="overflow-x-auto mt-4">
+          <table className="text-xs border-collapse">
+            <thead>
+              <tr>
+                <th className="p-2 border bg-gray-100 text-gray-700">L \\ I</th>
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <th
+                    key={i}
+                    className="p-2 border bg-gray-100 text-gray-700 text-center"
+                  >
+                    Impact {i}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody>
+              {[5, 4, 3, 2, 1].map((l) => (
+                <tr key={l}>
+                  <td className="p-2 border bg-gray-50 font-semibold text-gray-700">
+                    Likelihood {l}
+                  </td>
+
+                  {[1, 2, 3, 4, 5].map((i) => {
+                    const score = l * i;
+
+                    const hit = asset.selections.some(
+                      (s) => s.likelihood === l && s.impact === i
+                    );
+
+                    return (
+                      <td
+                        key={`${l}-${i}`}
+                        className={`p-2 border text-center ${cellColor(score)} ${
+                          hit ? "ring-2 ring-black font-bold" : ""
+                        }`}
+                        title={`Score ${score}`}
+                      >
+                        {score}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {asset.selections.length === 0 && (
+          <div className="text-xs text-gray-400 mt-3">
+            Select a vulnerability first to see highlights.
           </div>
         )}
       </div>

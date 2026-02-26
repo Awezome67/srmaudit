@@ -91,6 +91,8 @@ export async function toggleVulnerability(
 
   revalidatePath(`/assets/${assetId}`);
   revalidatePath(`/assets/${assetId}/audit`);
+  revalidatePath(`/assets/${assetId}/soa`);
+  revalidatePath(`/assets/${assetId}/report`);
 }
 
 /* =========================
@@ -103,15 +105,28 @@ export async function updateAuditStatus(
     | "PARTIAL"
     | "NON_COMPLIANT"
     | "NOT_APPLICABLE",
-  notes: string
+  notes: string,
+  justification?: string
 ) {
+  // 🔥 ISO rule: NA must have justification
+  if (status === "NOT_APPLICABLE" && !justification?.trim()) {
+    throw new Error(
+      "Justification is required when control is marked Not Applicable."
+    );
+  }
+
   await prisma.auditResult.update({
     where: { id: auditId },
     data: {
       status,
       notes,
+      justification:
+        status === "NOT_APPLICABLE" ? justification : null,
     },
   });
 
+  // Revalidate semua page terkait
+  revalidatePath(`/assets`);
+  revalidatePath(`/assets/${auditId}`);
   revalidatePath(`/assets`);
 }
