@@ -13,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className="bg-gray-100 text-gray-800 min-h-screen">
         {/* Header */}
         <header className="sticky top-0 z-50 bg-black text-white shadow-md">
