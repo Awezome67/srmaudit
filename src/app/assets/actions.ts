@@ -25,26 +25,22 @@ async function requireRole(roles: Array<"ADMIN" | "AUDITOR">) {
 export async function createAsset(formData: FormData) {
   await requireRole(["ADMIN"]); // 🔥 Hanya ADMIN boleh create
 
-  const name = String(formData.get("name") || "");
-  const owner = String(formData.get("owner") || "");
-  const location = String(formData.get("location") || "");
-  const type = String(formData.get("type") || "");
-  const cia = String(formData.get("cia") || "Medium");
+  const organizationId = String(formData.get("organizationId") || "").trim();
 
-  if (!name.trim()) throw new Error("Asset name is required");
+  const name = String(formData.get("name") || "").trim();
+  const owner = String(formData.get("owner") || "").trim();
+  const location = String(formData.get("location") || "").trim();
+  const type = String(formData.get("type") || "").trim();
+  const cia = String(formData.get("cia") || "Medium").trim();
 
-  let org = await prisma.organization.findFirst();
+  if (!organizationId) throw new Error("Organization is required");
+  if (!name) throw new Error("Asset name is required");
 
-  if (!org) {
-    org = await prisma.organization.create({
-      data: {
-        name: "Demo Organization",
-        sector: "Education",
-        employees: 200,
-        systemType: "Web",
-      },
-    });
-  }
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { id: true },
+  });
+  if (!org) throw new Error("Organization not found");
 
   await prisma.asset.create({
     data: {

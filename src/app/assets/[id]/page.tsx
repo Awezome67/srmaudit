@@ -39,7 +39,7 @@ export default async function AssetDetailPage({
         ← Back
       </Link>
 
-      {/* ===== HEADER + AUDIT LINK ===== */}
+      {/* ===== HEADER + LINKS ===== */}
       <div className="bg-white shadow-md rounded-xl p-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{asset.name}</h1>
@@ -52,35 +52,42 @@ export default async function AssetDetailPage({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-  <Link
-    href={`/assets/${asset.id}/audit`}
-    className="inline-block text-sm bg-black text-white px-3 py-2 rounded hover:bg-gray-800 transition"
-  >
-    Audit Checklist
-  </Link>
+          <Link
+            href={`/assets/${asset.id}/audit`}
+            className="inline-block text-sm bg-black text-white px-3 py-2 rounded hover:bg-gray-800 transition"
+          >
+            Audit Checklist
+          </Link>
 
-  <Link
-    href={`/assets/${asset.id}/findings`}
-    className="inline-block text-sm border border-gray-200 px-3 py-2 rounded hover:bg-gray-50 transition"
-  >
-    Findings
-  </Link>
+          <Link
+            href={`/assets/${asset.id}/findings`}
+            className="inline-block text-sm border border-gray-200 px-3 py-2 rounded hover:bg-gray-50 transition"
+          >
+            Findings
+          </Link>
 
-  <Link
-  href={`/assets/${asset.id}/soa`}
-  className="inline-block text-sm border border-gray-200 px-3 py-2 rounded hover:bg-gray-50"
->
-  Open SoA
-</Link>
+          <Link
+            href={`/assets/${asset.id}/soa`}
+            className="inline-block text-sm border border-gray-200 px-3 py-2 rounded hover:bg-gray-50 transition"
+          >
+            Open SoA
+          </Link>
 
+          {/* ✅ NEW: Evidence */}
+          <Link
+            href={`/assets/${asset.id}/evidence`}
+            className="inline-block text-sm border border-gray-200 px-3 py-2 rounded hover:bg-gray-50 transition"
+          >
+            Evidence
+          </Link>
 
-  <Link
-    href={`/assets/${asset.id}/report`}
-    className="inline-block text-sm border border-gray-200 px-3 py-2 rounded hover:bg-gray-50 transition"
-  >
-    Report
-  </Link>
-</div>
+          <Link
+            href={`/assets/${asset.id}/report`}
+            className="inline-block text-sm border border-gray-200 px-3 py-2 rounded hover:bg-gray-50 transition"
+          >
+            Report
+          </Link>
+        </div>
       </div>
 
       {/* ===== AVAILABLE VULNERABILITIES + ADD/REMOVE ===== */}

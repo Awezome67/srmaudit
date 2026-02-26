@@ -4,15 +4,51 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 /**
- * FINAL SEED (Module 1 + Module 2 ready)
+ * FINAL SEED (Module 1 + Module 2 + Module 4 compliant)
  * - Users: ADMIN + AUDITOR + AUDITEE
- * - Organization + AuditAssignment
+ * - Organization + exposure saved
+ * - AuditAssignment
  * - Assets (2)
- * - Vulnerabilities + Controls (for auto-checklist)
+ * - Vulnerabilities (19 required OWASP-based list)
+ * - Controls (ISO/IEC 27001 simplified) mapped via Control.mappedVulnName === Vulnerability.name
  *
  * IMPORTANT:
  * - Vulnerability.name MUST match Control.mappedVulnName for auto-checklist mapping.
  */
+
+function computeExposure(sector: string, employees: number, systemType: string) {
+  const s = (sector || "").toLowerCase();
+  const t = (systemType || "").toLowerCase();
+
+  const systemScore =
+    t.includes("cloud") ? 3 :
+    t.includes("web") ? 2 :
+    t.includes("mobile") ? 2 :
+    (t.includes("internal") || t.includes("network")) ? 1 :
+    1;
+
+  const employeeScore =
+    employees >= 1000 ? 3 :
+    employees >= 200 ? 2 :
+    1;
+
+  const highRiskSectors = [
+    "finance", "bank",
+    "health", "hospital",
+    "education", "university",
+    "government"
+  ];
+  const sectorScore = highRiskSectors.some((k) => s.includes(k)) ? 2 : 1;
+
+  const score = systemScore + employeeScore + sectorScore;
+
+  const exposureLevel =
+    score >= 7 ? "HIGH" :
+    score >= 5 ? "MEDIUM" :
+    "LOW";
+
+  return { exposureLevel, exposureScore: score };
+}
 
 async function main() {
   // =========================
@@ -22,7 +58,6 @@ async function main() {
   const auditorEmail = "auditor@demo.com";
   const auditeeEmail = "auditee@demo.com";
 
-  // Password demo (biar ga bingung)
   const ADMIN_PASSWORD = "admin123";
   const AUDITOR_PASSWORD = "auditor123";
   const AUDITEE_PASSWORD = "auditee123";
@@ -33,76 +68,55 @@ async function main() {
 
   const admin = await prisma.user.upsert({
     where: { email: adminEmail },
-    update: {
-      name: "Admin",
-      password: adminHash,
-      role: Role.ADMIN,
-    },
-    create: {
-      name: "Admin",
-      email: adminEmail,
-      password: adminHash,
-      role: Role.ADMIN,
-    },
+    update: { name: "Admin", password: adminHash, role: Role.ADMIN },
+    create: { name: "Admin", email: adminEmail, password: adminHash, role: Role.ADMIN },
   });
 
   const auditor = await prisma.user.upsert({
     where: { email: auditorEmail },
-    update: {
-      name: "Auditor Demo",
-      password: auditorHash,
-      role: Role.AUDITOR,
-    },
-    create: {
-      name: "Auditor Demo",
-      email: auditorEmail,
-      password: auditorHash,
-      role: Role.AUDITOR,
-    },
+    update: { name: "Auditor Demo", password: auditorHash, role: Role.AUDITOR },
+    create: { name: "Auditor Demo", email: auditorEmail, password: auditorHash, role: Role.AUDITOR },
   });
 
   const auditee = await prisma.user.upsert({
     where: { email: auditeeEmail },
-    update: {
-      name: "Auditee Demo",
-      password: auditeeHash,
-      role: Role.AUDITEE,
-    },
-    create: {
-      name: "Auditee Demo",
-      email: auditeeEmail,
-      password: auditeeHash,
-      role: Role.AUDITEE,
-    },
+    update: { name: "Auditee Demo", password: auditeeHash, role: Role.AUDITEE },
+    create: { name: "Auditee Demo", email: auditeeEmail, password: auditeeHash, role: Role.AUDITEE },
   });
 
   // =========================
-  // 1) ORGANIZATION
+  // 1) ORGANIZATION (with exposure saved)
   // =========================
   const orgName = "Demo Organization";
-  const org = await prisma.organization.upsert({
-    where: { id: "demo-org-id" }, // trik: kita bikin id fix via upsert? ga bisa kalau id default cuid
-    update: {},
-    create: {
-      name: orgName,
-      sector: "Education",
-      employees: 200,
-      systemType: "Web",
-    },
-  }).catch(async () => {
-    // fallback: kalau upsert id custom gagal (karena schema default cuid), cari by name lalu create
-    const exist = await prisma.organization.findFirst({ where: { name: orgName } });
-    if (exist) return exist;
+  const orgSector = "Education";
+  const orgEmployees = 200;
+  const orgSystemType = "Web";
 
-    return prisma.organization.create({
-      data: {
-        name: orgName,
-        sector: "Education",
-        employees: 200,
-        systemType: "Web",
-      },
-    });
-  });
+  const exp = computeExposure(orgSector, orgEmployees, orgSystemType);
+
+  // upsert by name (lebih stabil daripada coba set id fix)
+  const existingOrg = await prisma.organization.findFirst({ where: { name: orgName } });
+  const org = existingOrg
+    ? await prisma.organization.update({
+        where: { id: existingOrg.id },
+        data: {
+          sector: orgSector,
+          employees: orgEmployees,
+          systemType: orgSystemType,
+          exposureLevel: exp.exposureLevel,
+          exposureScore: exp.exposureScore,
+        },
+      })
+    : await prisma.organization.create({
+        data: {
+          name: orgName,
+          sector: orgSector,
+          employees: orgEmployees,
+          systemType: orgSystemType,
+          exposureLevel: exp.exposureLevel,
+          exposureScore: exp.exposureScore,
+        },
+      });
 
   // =========================
   // 2) AUDIT ASSIGNMENT (AUDITOR -> ORG)
@@ -110,10 +124,7 @@ async function main() {
   await prisma.auditAssignment.upsert({
     where: { organizationId_auditorId: { organizationId: org.id, auditorId: auditor.id } },
     update: {},
-    create: {
-      organizationId: org.id,
-      auditorId: auditor.id,
-    },
+    create: { organizationId: org.id, auditorId: auditor.id },
   });
 
   // =========================
@@ -152,19 +163,44 @@ async function main() {
   }
 
   // =========================
-  // 4) VULNERABILITIES
+  // 4) VULNERABILITIES (19 required list)
+  // Names aligned with the requirement doc.
   // =========================
   const vulnerabilities = [
-    { name: "SQL Injection", category: "OWASP", defaultLike: 4, defaultImp: 5 },
-    { name: "Cross-Site Scripting (XSS)", category: "OWASP", defaultLike: 4, defaultImp: 4 },
-    { name: "Cross-Site Request Forgery (CSRF)", category: "OWASP", defaultLike: 3, defaultImp: 4 },
-    { name: "Weak Password Policy", category: "Authentication", defaultLike: 4, defaultImp: 4 },
-    { name: "No HTTPS/TLS", category: "Transport Security", defaultLike: 3, defaultImp: 5 },
-    { name: "No Audit Logs", category: "Logging", defaultLike: 3, defaultImp: 4 },
-    { name: "Outdated Server Software", category: "Patch Management", defaultLike: 4, defaultImp: 4 },
-    { name: "Open Unnecessary Ports", category: "Network Security", defaultLike: 3, defaultImp: 4 },
-    { name: "Exposed Admin Panel", category: "Access Control", defaultLike: 4, defaultImp: 4 },
-    { name: "Insecure File Upload", category: "OWASP", defaultLike: 3, defaultImp: 4 },
+    // Injection (3)
+    { name: "SQL Injection", category: "Injection", defaultLike: 4, defaultImp: 5 },
+    { name: "Command Injection", category: "Injection", defaultLike: 4, defaultImp: 5 },
+    { name: "LDAP Injection", category: "Injection", defaultLike: 3, defaultImp: 4 },
+
+    // Broken Authentication (3)
+    { name: "Weak Password Policy", category: "Broken Authentication", defaultLike: 4, defaultImp: 4 },
+    { name: "No Account Lockout", category: "Broken Authentication", defaultLike: 3, defaultImp: 4 },
+    { name: "Session Hijacking", category: "Broken Authentication", defaultLike: 3, defaultImp: 5 },
+
+    // Sensitive Data Exposure (3)
+    { name: "No HTTPS / TLS", category: "Sensitive Data Exposure", defaultLike: 4, defaultImp: 5 },
+    { name: "Weak Encryption", category: "Sensitive Data Exposure", defaultLike: 3, defaultImp: 5 },
+    { name: "Exposed Database Backup", category: "Sensitive Data Exposure", defaultLike: 2, defaultImp: 5 },
+
+    // Access Control Failures (2)
+    { name: "IDOR (Insecure Direct Object Reference)", category: "Access Control Failures", defaultLike: 3, defaultImp: 4 },
+    { name: "Privilege Escalation", category: "Access Control Failures", defaultLike: 3, defaultImp: 5 },
+
+    // Security Misconfiguration (4)
+    { name: "Default Credentials", category: "Security Misconfiguration", defaultLike: 4, defaultImp: 5 },
+    { name: "Directory Listing Enabled", category: "Security Misconfiguration", defaultLike: 3, defaultImp: 3 },
+    { name: "Exposed Admin Panel", category: "Security Misconfiguration", defaultLike: 3, defaultImp: 4 },
+    { name: "Open Unnecessary Ports", category: "Security Misconfiguration", defaultLike: 3, defaultImp: 4 },
+
+    // Cross-Site Attacks (2)
+    { name: "Cross-Site Scripting (XSS)", category: "Cross-Site Attacks", defaultLike: 4, defaultImp: 4 },
+    { name: "Cross-Site Request Forgery (CSRF)", category: "Cross-Site Attacks", defaultLike: 3, defaultImp: 4 },
+
+    // Logging & Monitoring Failure (1)
+    { name: "No Audit Logs", category: "Logging & Monitoring Failure", defaultLike: 2, defaultImp: 4 },
+
+    // Dependency & Software Issues (1)
+    { name: "Outdated Server Software", category: "Dependency & Software Issues", defaultLike: 3, defaultImp: 5 },
   ];
 
   for (const v of vulnerabilities) {
@@ -181,6 +217,7 @@ async function main() {
 
   // =========================
   // 5) CONTROLS (ISO/IEC 27001 simplified)
+  // Mapped by vuln name
   // =========================
   const controls = [
     // Weak Password Policy
@@ -195,16 +232,44 @@ async function main() {
       mappedVulnName: "Weak Password Policy",
     },
 
-    // No HTTPS/TLS
+    // No Account Lockout
+    {
+      framework: "ISO/IEC 27001",
+      name: "Account lockout after repeated failed logins",
+      mappedVulnName: "No Account Lockout",
+    },
+
+    // Session Hijacking
+    {
+      framework: "ISO/IEC 27001",
+      name: "Secure session management (timeout, regeneration, secure cookies)",
+      mappedVulnName: "Session Hijacking",
+    },
+
+    // No HTTPS / TLS
     {
       framework: "ISO/IEC 27001",
       name: "TLS certificate configured and HTTPS enforced",
-      mappedVulnName: "No HTTPS/TLS",
+      mappedVulnName: "No HTTPS / TLS",
     },
     {
       framework: "ISO/IEC 27001",
       name: "Secure transport configuration reviewed (TLS versions/ciphers)",
-      mappedVulnName: "No HTTPS/TLS",
+      mappedVulnName: "No HTTPS / TLS",
+    },
+
+    // Weak Encryption
+    {
+      framework: "ISO/IEC 27001",
+      name: "Encryption standards defined for data at rest and in transit",
+      mappedVulnName: "Weak Encryption",
+    },
+
+    // Exposed Database Backup
+    {
+      framework: "ISO/IEC 27001",
+      name: "Backups protected (access control, encryption) and not publicly exposed",
+      mappedVulnName: "Exposed Database Backup",
     },
 
     // No Audit Logs
@@ -249,25 +314,57 @@ async function main() {
       name: "Admin interface access restricted (IP allowlist/VPN)",
       mappedVulnName: "Exposed Admin Panel",
     },
+
+    // Default Credentials
     {
       framework: "ISO/IEC 27001",
-      name: "Privileged access rights reviewed and minimized",
-      mappedVulnName: "Exposed Admin Panel",
+      name: "Default credentials removed; credentials vault used",
+      mappedVulnName: "Default Credentials",
     },
 
-    // OWASP: SQLi
+    // Directory Listing Enabled
     {
       framework: "ISO/IEC 27001",
-      name: "Input validation and parameterized queries implemented",
-      mappedVulnName: "SQL Injection",
+      name: "Server hardening (directory listing disabled; least functionality)",
+      mappedVulnName: "Directory Listing Enabled",
     },
+
+    // IDOR
     {
       framework: "ISO/IEC 27001",
-      name: "Secure coding review and testing performed (SQLi)",
+      name: "Access control checks enforced on object/resource level (IDOR)",
+      mappedVulnName: "IDOR (Insecure Direct Object Reference)",
+    },
+
+    // Privilege Escalation
+    {
+      framework: "ISO/IEC 27001",
+      name: "Privileged access rights reviewed and minimized (least privilege)",
+      mappedVulnName: "Privilege Escalation",
+    },
+
+    // SQL Injection
+    {
+      framework: "ISO/IEC 27001",
+      name: "Input validation and parameterized queries implemented (SQLi)",
       mappedVulnName: "SQL Injection",
     },
 
-    // OWASP: XSS
+    // Command Injection
+    {
+      framework: "ISO/IEC 27001",
+      name: "Command execution disabled/restricted; input validation for OS calls",
+      mappedVulnName: "Command Injection",
+    },
+
+    // LDAP Injection
+    {
+      framework: "ISO/IEC 27001",
+      name: "LDAP query parameterization and validation implemented",
+      mappedVulnName: "LDAP Injection",
+    },
+
+    // XSS
     {
       framework: "ISO/IEC 27001",
       name: "Output encoding & sanitization implemented (XSS)",
@@ -279,7 +376,7 @@ async function main() {
       mappedVulnName: "Cross-Site Scripting (XSS)",
     },
 
-    // OWASP: CSRF
+    // CSRF
     {
       framework: "ISO/IEC 27001",
       name: "CSRF tokens implemented for state-changing actions",
@@ -289,18 +386,6 @@ async function main() {
       framework: "ISO/IEC 27001",
       name: "SameSite cookies & origin checks configured",
       mappedVulnName: "Cross-Site Request Forgery (CSRF)",
-    },
-
-    // Insecure File Upload
-    {
-      framework: "ISO/IEC 27001",
-      name: "File upload validation (type/size) and malware scan",
-      mappedVulnName: "Insecure File Upload",
-    },
-    {
-      framework: "ISO/IEC 27001",
-      name: "Upload storage isolation and access control enforced",
-      mappedVulnName: "Insecure File Upload",
     },
   ];
 
@@ -324,7 +409,7 @@ async function main() {
   console.log("AUDITOR:", auditorEmail, " / ", AUDITOR_PASSWORD);
   console.log("AUDITEE:", auditeeEmail, " / ", AUDITEE_PASSWORD);
   console.log("--------------------------");
-  console.log("Org:", org.name, "(", org.id, ")");
+  console.log("Org:", org.name, "(", org.id, ")", "Exposure:", org.exposureLevel, org.exposureScore);
 }
 
 main()

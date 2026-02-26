@@ -40,7 +40,9 @@ export default function LoginPage() {
       return;
     }
 
-    router.push(res.url || "/assets");
+    // ✅ IMPORTANT: force server components (RootLayout) re-fetch session
+    router.replace(res.url || callbackUrl || "/assets");
+    router.refresh();
   }
 
   return (

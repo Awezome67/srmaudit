@@ -27,7 +27,6 @@ export default async function AssetsPage() {
   const whereCondition: Prisma.AssetWhereInput = {};
 
   // ✅ AUDITOR: hanya boleh lihat asset dari org yang dia di-assign
-  // (nama relasinya di schema: Organization.auditAssignments)
   if (role === "AUDITOR") {
     whereCondition.organization = {
       auditAssignments: {
@@ -36,7 +35,14 @@ export default async function AssetsPage() {
     };
   }
 
-  // kalau AUDITEE mau dibatasi juga nanti bisa ditambah rule di sini
+  // Ambil organisasi untuk dropdown create asset (ADMIN only)
+  const organizations =
+    role === "ADMIN"
+      ? await prisma.organization.findMany({
+          orderBy: { createdAt: "desc" },
+          select: { id: true, name: true, sector: true, employees: true, systemType: true },
+        })
+      : [];
 
   const assets = await prisma.asset.findMany({
     where: whereCondition,
@@ -45,16 +51,92 @@ export default async function AssetsPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-bold tracking-tight">Assets</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">Assets</h1>
+
+        {role === "ADMIN" && (
+          <div className="flex gap-3">
+            <Link className="text-sm underline text-blue-600" href="/admin/organizations">
+              Manage Organizations
+            </Link>
+            <Link className="text-sm underline text-blue-600" href="/admin/assignments">
+              Assignments
+            </Link>
+          </div>
+        )}
+      </div>
 
       {/* 🔥 Form hanya ADMIN */}
       {role === "ADMIN" && (
-        <form
-          action={createAsset}
-          className="bg-white shadow-md rounded-xl p-6 space-y-6"
-        >
-          {/* (paste form kamu di sini, ga gue ubah) */}
-          {/* ... */}
+        <form action={createAsset} className="bg-white shadow-md rounded-xl p-6 space-y-6">
+          <div className="text-lg font-semibold">Create Asset</div>
+
+          {/* Organization selector (WAJIB) */}
+          <div>
+            <label className="text-sm font-medium">Organization</label>
+            <select
+              name="organizationId"
+              className="w-full border border-gray-300 rounded-lg p-2 mt-1"
+              required
+              defaultValue=""
+            >
+              <option value="" disabled>
+                -- Select organization --
+              </option>
+              {organizations.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name} • {o.sector} • {o.systemType} • {o.employees} employees
+                </option>
+              ))}
+            </select>
+
+            {organizations.length === 0 && (
+              <div className="text-xs text-gray-500 mt-2">
+                Belum ada organization. Buat dulu di{" "}
+                <Link className="underline text-blue-600" href="/admin/organizations">
+                  /admin/organizations
+                </Link>
+                .
+              </div>
+            )}
+          </div>
+
+          {/* Fields asset */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium">Asset Name</label>
+              <input name="name" className="w-full border rounded-lg p-2 mt-1" required />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Owner</label>
+              <input name="owner" className="w-full border rounded-lg p-2 mt-1" placeholder="IT Department" />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Location</label>
+              <input name="location" className="w-full border rounded-lg p-2 mt-1" placeholder="Cloud Server" />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Type</label>
+              <input
+                name="type"
+                className="w-full border rounded-lg p-2 mt-1"
+                placeholder="Application / Server / Data"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">CIA</label>
+              <select name="cia" className="w-full border rounded-lg p-2 mt-1" defaultValue="Medium">
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+          </div>
+
           <button className="bg-black text-white px-5 py-2 rounded-lg hover:bg-gray-800 transition font-medium">
             Add Asset
           </button>
@@ -90,9 +172,7 @@ export default async function AssetsPage() {
               <div>{a.type}</div>
 
               <div>
-                <span className="px-2 py-1 bg-gray-100 rounded text-xs font-medium">
-                  {a.cia}
-                </span>
+                <span className="px-2 py-1 bg-gray-100 rounded text-xs font-medium">{a.cia}</span>
               </div>
 
               <div className="col-span-2">

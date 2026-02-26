@@ -31,14 +31,20 @@ model User {
 }
 
 model Organization {
-  id          String            @id @default(cuid())
+  id          String   @id @default(cuid())
   name        String
   sector      String
   employees   Int
   systemType  String
-  createdAt   DateTime          @default(now())
-  assets      Asset[]
-  auditAssignments AuditAssignment[]
+
+  // ✅ Module 2: exposure level tersimpan di DB
+  exposureLevel String @default("LOW")  // LOW | MEDIUM | HIGH
+  exposureScore Int    @default(0)
+
+  createdAt   DateTime @default(now())
+
+  assets            Asset[]
+  auditAssignments  AuditAssignment[]
 }
 
 model AuditAssignment {
