@@ -3,30 +3,117 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
-// Create manual finding
-export async function createFinding(assetId: string, formData: FormData) {
-  const issue = String(formData.get("issue") || "").trim();
-  const risk = String(formData.get("risk") || "").trim();
-  const recommendation = String(formData.get("recommendation") || "").trim();
+function riskFromAuditStatus(status: "NON_COMPLIANT" | "PARTIAL") {
+  return status === "NON_COMPLIANT" ? "High" : "Medium";
+}
 
-  if (!issue) throw new Error("Issue is required");
-  if (!risk) throw new Error("Risk is required");
-  if (!recommendation) throw new Error("Recommendation is required");
+function severityFromAuditStatus(status: "NON_COMPLIANT" | "PARTIAL") {
+  return status === "NON_COMPLIANT" ? "High" : "Medium";
+}
 
-  await prisma.finding.create({
-    data: {
+function recommendationTemplate(controlName: string, framework: string) {
+  return `Implement and verify control (${framework}): ${controlName}. Collect evidence (policy, screenshot, configuration) and re-audit.`;
+}
+
+export async function generateFindings(assetId: string) {
+  // ambil audit yang bermasalah
+  const audits = await prisma.auditResult.findMany({
+    where: {
       assetId,
-      issue,
-      risk,
-      recommendation,
+      status: { in: ["NON_COMPLIANT", "PARTIAL"] },
     },
+    include: { control: true },
   });
+
+  if (audits.length === 0) {
+    revalidatePath(`/assets/${assetId}/findings`);
+    return;
+  }
+
+  // Upsert finding per (assetId, controlId)
+  await prisma.$transaction(
+    audits.map((a) => {
+      const issue = `${a.control.framework}: ${a.control.name} is ${a.status}`;
+
+      const risk = riskFromAuditStatus(a.status as any);
+      const severity = severityFromAuditStatus(a.status as any);
+
+      const recommendation =
+        a.notes?.trim()
+          ? `Based on audit notes: ${a.notes}`
+          : recommendationTemplate(a.control.name, a.control.framework);
+
+      return prisma.finding.upsert({
+        where: {
+          // pakai unique key yang sudah kamu punya:
+          // @@unique([assetId, controlId, issue])
+          assetId_controlId_issue: {
+            assetId,
+            controlId: a.controlId,
+            issue,
+          },
+        },
+        update: {
+          // kalau sudah ada, refresh rekomendasi/risk/severity (biar nyambung dengan audit terbaru)
+          risk,
+          severity,
+          recommendation,
+          // jangan paksa status jadi OPEN kalau user sudah CLOSE
+          updatedAt: new Date(),
+        },
+        create: {
+          assetId,
+          controlId: a.controlId,
+          issue,
+          risk,
+          severity,
+          recommendation,
+          status: "OPEN",
+          riskTreatment: "MITIGATE",
+        },
+      });
+    })
+  );
 
   revalidatePath(`/assets/${assetId}/findings`);
 }
 
-// Delete finding
-export async function deleteFinding(assetId: string, findingId: string) {
+export async function deleteFinding(findingId: string, assetId: string) {
   await prisma.finding.delete({ where: { id: findingId } });
+  revalidatePath(`/assets/${assetId}/findings`);
+}
+
+export async function updateFinding(
+  findingId: string,
+  assetId: string,
+  formData: FormData
+) {
+  const owner = String(formData.get("owner") || "").trim() || null;
+  const rootCause = String(formData.get("rootCause") || "").trim() || null;
+  const evidenceRef = String(formData.get("evidenceRef") || "").trim() || null;
+
+  const riskTreatment = String(formData.get("riskTreatment") || "MITIGATE") as
+    | "MITIGATE"
+    | "ACCEPT"
+    | "TRANSFER"
+    | "AVOID";
+
+  const status = String(formData.get("status") || "OPEN") as "OPEN" | "CLOSED";
+
+  const dueDateRaw = String(formData.get("dueDate") || "").trim();
+  const dueDate = dueDateRaw ? new Date(dueDateRaw) : null;
+
+  await prisma.finding.update({
+    where: { id: findingId },
+    data: {
+      owner,
+      rootCause,
+      evidenceRef,
+      riskTreatment,
+      status,
+      dueDate,
+    },
+  });
+
   revalidatePath(`/assets/${assetId}/findings`);
 }

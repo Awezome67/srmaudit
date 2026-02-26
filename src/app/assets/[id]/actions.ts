@@ -2,9 +2,48 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 /* =========================
-   RISK LEVEL CALCULATOR
+   ROLE + ASSIGNMENT CHECK
+========================= */
+async function requireAccessToAsset(assetId: string) {
+  const session = await getServerSession(authOptions);
+  const role = (session?.user as any)?.role;
+  const userId = (session?.user as any)?.id;
+
+  if (!session) throw new Error("Unauthorized");
+
+  if (role === "ADMIN") return;
+
+  if (role === "AUDITOR") {
+    const asset = await prisma.asset.findUnique({
+      where: { id: assetId },
+      select: { organizationId: true },
+    });
+
+    if (!asset) throw new Error("Asset not found");
+
+    const assigned = await prisma.auditAssignment.findFirst({
+      where: {
+        organizationId: asset.organizationId,
+        auditorId: userId,
+      },
+    });
+
+    if (!assigned) {
+      throw new Error("Forbidden: Not assigned to this organization");
+    }
+
+    return;
+  }
+
+  throw new Error("Forbidden");
+}
+
+/* =========================
+   RISK LEVEL
 ========================= */
 function riskLevel(score: number) {
   if (score <= 5) return "Low";
@@ -20,6 +59,8 @@ export async function toggleVulnerability(
   assetId: string,
   vulnerabilityId: string
 ) {
+  await requireAccessToAsset(assetId);
+
   const existing = await prisma.assetVulnerability.findUnique({
     where: { assetId_vulnerabilityId: { assetId, vulnerabilityId } },
   });
@@ -91,6 +132,7 @@ export async function toggleVulnerability(
 
   revalidatePath(`/assets/${assetId}`);
   revalidatePath(`/assets/${assetId}/audit`);
+  revalidatePath(`/assets/${assetId}/report`);
 }
 
 /* =========================
@@ -103,15 +145,35 @@ export async function updateAuditStatus(
     | "PARTIAL"
     | "NON_COMPLIANT"
     | "NOT_APPLICABLE",
-  notes: string
+  notes: string,
+  justification?: string
 ) {
+  const audit = await prisma.auditResult.findUnique({
+    where: { id: auditId },
+    select: { assetId: true },
+  });
+
+  if (!audit) throw new Error("Audit not found");
+
+  await requireAccessToAsset(audit.assetId);
+
+  if (status === "NOT_APPLICABLE" && !justification?.trim()) {
+    throw new Error(
+      "Justification is required when control is marked Not Applicable."
+    );
+  }
+
   await prisma.auditResult.update({
     where: { id: auditId },
     data: {
       status,
       notes,
+      justification:
+        status === "NOT_APPLICABLE" ? justification : null,
     },
   });
 
-  revalidatePath(`/assets`);
+  revalidatePath(`/assets/${audit.assetId}`);
+  revalidatePath(`/assets/${audit.assetId}/audit`);
+  revalidatePath(`/assets/${audit.assetId}/report`);
 }

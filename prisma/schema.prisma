@@ -8,6 +8,7 @@ datasource db {
 }
 
 enum Role {
+  ADMIN
   AUDITOR
   AUDITEE
 }
@@ -20,22 +21,44 @@ enum ComplianceStatus {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      Role
-  createdAt DateTime @default(now())
+  id               String            @id @default(cuid())
+  name             String
+  email            String            @unique
+  password         String
+  role             Role
+  createdAt        DateTime          @default(now())
+  auditAssignments AuditAssignment[]
 }
 
 model Organization {
-  id         String   @id @default(cuid())
-  name       String
-  sector     String
-  employees  Int
-  systemType String
-  createdAt  DateTime @default(now())
-  assets     Asset[]
+  id          String   @id @default(cuid())
+  name        String
+  sector      String
+  employees   Int
+  systemType  String
+
+  // ✅ Module 2: exposure level tersimpan di DB
+  exposureLevel String @default("LOW")  // LOW | MEDIUM | HIGH
+  exposureScore Int    @default(0)
+
+  createdAt   DateTime @default(now())
+
+  assets            Asset[]
+  auditAssignments  AuditAssignment[]
+}
+
+model AuditAssignment {
+  id             String       @id @default(cuid())
+  organizationId String
+  auditorId      String
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  auditor        User         @relation(fields: [auditorId], references: [id])
+
+  @@unique([organizationId, auditorId])
+  @@index([auditorId])
+  @@index([organizationId])
 }
 
 model Asset {
@@ -98,12 +121,13 @@ enum AuditStatus {
 }
 
 model AuditResult {
-  id        String      @id @default(cuid())
-  assetId   String
-  controlId String
-  status    AuditStatus @default(NON_COMPLIANT)
-  notes     String?
-  createdAt DateTime    @default(now())
+  id            String      @id @default(cuid())
+  assetId       String
+  controlId     String
+  status        AuditStatus @default(NON_COMPLIANT)
+  notes         String?
+  justification String?
+  createdAt     DateTime    @default(now())
 
   asset   Asset   @relation(fields: [assetId], references: [id])
   control Control @relation(fields: [controlId], references: [id])
